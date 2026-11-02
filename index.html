@@ -79,10 +79,12 @@ button,input,select,summary{touch-action:manipulation}
 #deleteHand{border-color:#e65b61;color:#ffb5b8}
 .log-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:520px){.log-fields{grid-template-columns:1fr}}
+.default-hand{display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;font-size:14px}.default-hand button{flex:1;min-width:150px}.default-hand button[aria-pressed="true"]{background:#284b42;border-color:#7cf1c3;box-shadow:inset 0 0 0 1px #7cf1c3}
 </style></head><body><main><header><h1>♠ Poker Range Grid</h1><span>Estimated stack-adjusted value</span></header><section class="rank-editor panel"><label>Rank editor <output id="selectedHand">Select a grid box</output></label><div class="rank-buttons"><button id="rankUp" disabled>Move up one</button><button id="rankDown" disabled>Move down one</button><button id="rankUpTen" disabled>Move up 10</button><button id="rankDownTen" disabled>Move down 10</button><button id="resetRanks" disabled>Reset this group</button><button id="saveApp">Save customised app</button></div><div id="editStatus" class="edit-status" aria-live="polite"></div></section><section class="toolbar panel"><div><label for="range">Top starting hands <output id="rangeValue">20%</output></label><input id="range" type="range" min="0" max="100" value="20" step="0.01" aria-describedby="rangeKeys"><div class="muted" id="rangeKeys">Arrow keys work anywhere on this page: ←/→ 1% · ↓/↑ 0.1% · Shift + arrow 5%</div><div class="keep"><span>Keep</span><button data-keep="45">45%</button><button data-keep="50">50%</button><button data-keep="55">55%</button><button data-keep="60">60%</button><button data-keep="70">70%</button><button data-keep="90">90%</button><button data-keep="110">110%</button><button data-keep="150">150%</button></div></div><div><label for="size">Grid size <output id="sizeValue">100%</output></label><input id="size" type="range" min="65" max="140" value="100"><div class="muted">Actual coverage <strong id="coverage"></strong></div><div id="count" class="muted" aria-live="polite"></div></div></section><section class="presets panel"><div class="break-title"><span>Position presets</span><label for="tableSize">Players <select id="tableSize" aria-label="Players at the table"><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option selected>9</option></select></label></div><label for="aggression">Position aggression <output id="aggressionValue"></output></label><input id="aggression" type="range" min="-20" max="20" step="0.1" value="0"><div class="ends"><span>Conservative · −20%</span><span>Neutral</span><span>Aggressive · +20%</span></div><div class="preset-buttons" id="positionButtons"></div></section><section class="grid-wrap" aria-label="Starting hand matrix"><div class="matrix-layout" id="matrixLayout"><div id="grid" class="grid"></div><div class="matrix-shortcuts" role="group" aria-label="Keep a percentage of the current range"><button type="button" data-keep="50">50%</button><button type="button" data-keep="60">60%</button><button type="button" data-keep="70">70%</button></div></div></section>
 <section class="hand-tools" aria-label="Hand recording">
 <button type="button" id="recordHand" disabled>Record hand · select a hand</button>
 <button type="button" id="openHands">Hand history (0)</button>
+<div class="default-hand" role="group" aria-label="Default result for new hands"><span>Default hand:</span><button type="button" id="defaultFold" aria-pressed="true">I folded · I lost</button><button type="button" id="defaultWin" aria-pressed="false">Everyone folded · I won</button></div>
 <span id="handStatus" class="muted" role="status"></span>
 </section>
 <dialog id="handDialog" class="hand-dialog" aria-labelledby="handHistoryTitle">
@@ -221,7 +223,7 @@ $('stackNextGroup').onclick=()=>changeStack(groupJump(+$('stack').value,1));
 $('range').oninput=()=>{activePreset=null;render();};
 $('saveApp').onclick=()=>{
 const clone=document.documentElement.cloneNode(true);
-clone.querySelector('#embeddedState').textContent=JSON.stringify({rankEdits,stackSlots,handRecords:currentHandRecords,handSessions:savedSessions,gridSize:+$('size').value,stackBB:+$('stack').value,rangePercent:+$('range').value,aggression:+$('aggression').value,tableSize:+$('tableSize').value}).replace(/</g,'\u003c');
+clone.querySelector('#embeddedState').textContent=JSON.stringify({rankEdits,stackSlots,handRecords:currentHandRecords,handSessions:savedSessions,defaultHandEnding,gridSize:+$('size').value,stackBB:+$('stack').value,rangePercent:+$('range').value,aggression:+$('aggression').value,tableSize:+$('tableSize').value}).replace(/</g,'\u003c');
 const url=URL.createObjectURL(new Blob(['<!doctype html>\n'+clone.outerHTML],{type:'text/html'}));
 const link=document.createElement('a');link.href=url;link.download='Poker-Range-Grid-Custom.html';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
 $('editStatus').textContent='Customised copy downloaded. Open that saved copy to retain these rankings and settings.';
@@ -245,6 +247,19 @@ document.querySelectorAll('[data-keep]').forEach(b=>b.onclick=()=>keepRange(+b.d
 if(embeddedState.gridSize!=null)$('size').value=String(embeddedState.gridSize);
 function resizeGrid(){const scale=+$('size').value/100;$('matrixLayout').classList.toggle('has-shortcuts',scale===.65);grid.classList.toggle('compact',scale<1);$('sizeValue').textContent=$('size').value+'%';grid.style.setProperty('--cell-height',Math.round(47*scale)+'px');grid.style.setProperty('--hand-font',Math.max(12,14*scale)+'px');grid.style.setProperty('--meta-font','12px');grid.style.setProperty('--grid-min',Math.round(640*scale)+'px');grid.style.maxWidth=Math.round(1080*scale)+'px';}
 
+const defaultHandKey='poker-range-default-hand-v1';
+let defaultHandEnding=embeddedState.defaultHandEnding==='Everyone else folded'?'Everyone else folded':'I folded';
+try{const saved=localStorage.getItem(defaultHandKey);if(saved==='I folded'||saved==='Everyone else folded')defaultHandEnding=saved;}catch(e){}
+function defaultOutcome(ending){return ending==='Everyone else folded'?'Win':ending==='I folded'?'Loss':null;}
+function setDefaultHand(ending){
+ defaultHandEnding=ending;
+ $('defaultFold').setAttribute('aria-pressed',String(ending==='I folded'));
+ $('defaultWin').setAttribute('aria-pressed',String(ending==='Everyone else folded'));
+ try{localStorage.setItem(defaultHandKey,ending);}catch(e){}
+}
+$('defaultFold').onclick=()=>setDefaultHand('I folded');
+$('defaultWin').onclick=()=>setDefaultHand('Everyone else folded');
+setDefaultHand(defaultHandEnding);
 const handLogKey='poker-range-hand-log-v1';
 let handRecords=[],editingHandId=null;
 let currentHandRecords=[],savedSessions=[],selectedSessionId='current';
@@ -312,7 +327,7 @@ $('recordHand').onclick=()=>{
  const previous=currentHandRecords[currentHandRecords.length-1];
  if(previous?.hand===selectedHand&&!window.confirm('⚠️ You just recorded '+selectedHand+'. Record the same hand again?'))return;
  selectHandSession('current');
- handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,stackGroup:bandLabel(+$('stack').value),rankPercent:current.find(h=>h.name===selectedHand)?.cumulativePercent,opponents:'',stage:'',ending:'I folded',outcome:'Loss',notes:''});
+ handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,stackGroup:bandLabel(+$('stack').value),rankPercent:current.find(h=>h.name===selectedHand)?.cumulativePercent,opponents:'',stage:'',ending:defaultHandEnding,outcome:defaultOutcome(defaultHandEnding),notes:''});
  const saved=persistHandRecords();updateHandTools();
  $('handStatus').textContent=selectedHand+' recorded. '+(saved?'':'Browser saving unavailable—export records before closing.');
 };
@@ -321,7 +336,7 @@ $('closeHands').onclick=()=>$('handDialog').close();
 $('handForm').onsubmit=event=>{
  event.preventDefault();const r=handRecords.find(r=>r.id===editingHandId);if(!r)return;
  for(const [field,key] of [['opponentHands','opponents'],['handStage','stage'],['handEnding','ending'],['handOutcome','outcome'],['handNotes','notes']])r[key]=$(field).value;
- if(r.ending==='I folded'){r.outcome='Loss';$('handOutcome').value='Loss';}
+ const automaticOutcome=defaultOutcome(r.ending);if(automaticOutcome){r.outcome=automaticOutcome;$('handOutcome').value=automaticOutcome;}
  r.updatedAt=new Date().toISOString();const saved=persistHandRecords();renderHandList();
  $('handSaveStatus').textContent=saved?'Details saved.':'Browser saving unavailable—export records before closing.';
 };
@@ -396,10 +411,10 @@ $('removeLastOpponent').onclick=()=>{
  const r=handRecords.find(r=>r.id===editingHandId);if(r){r.opponents=$('opponentHands').value;const saved=persistHandRecords();renderHandList();$('handSaveStatus').textContent=saved?'Opponent hands saved.':'Browser saving unavailable—export before closing.';}
 };
 $('handEnding').onchange=()=>{
- if($('handEnding').value!=='I folded')return;
- $('handOutcome').value='Loss';
+ const ending=$('handEnding').value,outcome=defaultOutcome(ending);if(!outcome)return;
+ $('handOutcome').value=outcome;
  const r=handRecords.find(r=>r.id===editingHandId);
- if(r){r.ending='I folded';r.outcome='Loss';const saved=persistHandRecords();renderHandList();$('handSaveStatus').textContent=saved?'Fold and loss saved.':'Browser saving unavailable—export before closing.';}
+ if(r){r.ending=ending;r.outcome=outcome;const saved=persistHandRecords();renderHandList();$('handSaveStatus').textContent=saved?'Hand result saved.':'Browser saving unavailable—export before closing.';}
 };
 $('handStatus').textContent=handLoadWarning;renderSessionChoices();updateHandTools();
 
