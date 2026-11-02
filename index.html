@@ -69,6 +69,7 @@ button,input,select,summary{touch-action:manipulation}
 .session-controls{display:grid;gap:10px;margin:12px 0}
 .session-controls input,.session-controls select{font:16px system-ui;background:#0a1017;color:#edf4fa;padding:10px;border:1px solid #3b5267;border-radius:6px;width:100%}
 .session-controls label{display:grid;gap:6px}
+#deleteSession{border-color:#e65b61;color:#ffb5b8}
 #deleteHand{border-color:#e65b61;color:#ffb5b8}
 .log-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:520px){.log-fields{grid-template-columns:1fr}}
@@ -89,6 +90,7 @@ button,input,select,summary{touch-action:manipulation}
 <span id="sessionStatus" class="muted" role="status"></span>
 </div>
 <button type="button" id="exportHands">Export selected session</button>
+<button type="button" id="deleteSession">Delete selected session</button>
 <div id="handList"></div>
 <form id="handForm" hidden>
 <h3 id="handTitle"></h3>
@@ -301,6 +303,8 @@ function editHandRecord(id){
 }
 $('recordHand').onclick=()=>{
  if(!selectedHand)return;
+ const previous=currentHandRecords[currentHandRecords.length-1];
+ if(previous?.hand===selectedHand&&!window.confirm('⚠️ You just recorded '+selectedHand+'. Record the same hand again?'))return;
  selectHandSession('current');
  handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,stackGroup:bandLabel(+$('stack').value),rankPercent:current.find(h=>h.name===selectedHand)?.cumulativePercent,opponents:'',stage:'',ending:'',outcome:'',notes:''});
  const saved=persistHandRecords();updateHandTools();
@@ -326,6 +330,7 @@ function renderSessionChoices(){
  for(const session of savedSessions){const option=document.createElement('option');option.value=session.id;option.textContent=session.name+' ('+session.records.length+' hands)';select.append(option);}
  select.value=selectedSessionId;
  $('saveSession').disabled=!currentHandRecords.length;
+ $('deleteSession').disabled=selectedSessionId==='current'&&!currentHandRecords.length;
 }
 function selectHandSession(id){
  const session=savedSessions.find(s=>s.id===id);
@@ -334,6 +339,16 @@ function selectHandSession(id){
  renderSessionChoices();renderHandList();
 }
 $('sessionSelect').onchange=()=>selectHandSession($('sessionSelect').value);
+$('deleteSession').onclick=()=>{
+ const session=savedSessions.find(s=>s.id===selectedSessionId);
+ const name=session?session.name:'Current session';
+ if(!window.confirm('Delete '+name+' and all '+handRecords.length+' hands? This cannot be undone.'))return;
+ if(session)savedSessions=savedSessions.filter(s=>s.id!==session.id);
+ else currentHandRecords=[];
+ selectHandSession('current');
+ const saved=persistHandRecords();
+ $('sessionStatus').textContent=saved?'Session deleted.':'Session removed; browser saving unavailable.';
+};
 $('saveSession').onclick=()=>{
  if(!currentHandRecords.length)return;
  const name=$('sessionName').value.trim();
