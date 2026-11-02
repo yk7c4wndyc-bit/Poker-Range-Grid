@@ -52,6 +52,18 @@ button,input,select,summary{touch-action:manipulation}
 #handForm[hidden]{display:none}
 #handForm label{display:grid;gap:6px;font-size:14px}
 #handForm input,#handForm textarea,#handForm select{width:100%;background:#0a1017;color:#edf4fa;border:1px solid #3b5267;border-radius:6px;padding:10px;font:16px system-ui}
+
+#opponentPicker{margin:10px 0}
+#opponentGrid{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:3px}
+#opponentGrid button{min-height:30px;padding:4px 0;font-size:clamp(9px,2.5vw,13px);border-radius:4px}
+#opponentGrid button[data-type=pair]{background:#f1d766;color:#211a0a}
+#opponentGrid button[data-type=suited]{background:#65c58d;color:#0b2214}
+#opponentGrid button[data-type=off]{background:#6a9dd8;color:#071b31}
+#opponentGrid button[aria-pressed=true]{outline:2px solid white;outline-offset:-2px}
+.session-controls{display:grid;gap:10px;margin:12px 0}
+.session-controls input,.session-controls select{font:16px system-ui;background:#0a1017;color:#edf4fa;padding:10px;border:1px solid #3b5267;border-radius:6px;width:100%}
+.session-controls label{display:grid;gap:6px}
+#deleteHand{border-color:#e65b61;color:#ffb5b8}
 .log-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:520px){.log-fields{grid-template-columns:1fr}}
 </style></head><body><main><header><h1>♠ Poker Range Grid</h1><span>Estimated stack-adjusted value</span></header><section class="rank-editor panel"><label>Rank editor <output id="selectedHand">Select a grid box</output></label><div class="rank-buttons"><button id="rankUp" disabled>Move up one</button><button id="rankDown" disabled>Move down one</button><button id="rankUpTen" disabled>Move up 10</button><button id="rankDownTen" disabled>Move down 10</button><button id="resetRanks" disabled>Reset this group</button><button id="saveApp">Save customised app</button></div><div id="editStatus" class="edit-status" aria-live="polite"></div></section><section class="toolbar panel"><div><label for="range">Top starting hands <output id="rangeValue">20%</output></label><input id="range" type="range" min="0" max="100" value="20" step="0.01" aria-describedby="rangeKeys"><div class="muted" id="rangeKeys">Arrow keys work anywhere on this page: ←/→ 1% · ↓/↑ 0.1% · Shift + arrow 5%</div><div class="keep"><span>Keep</span><button data-keep="45">45%</button><button data-keep="50">50%</button><button data-keep="55">55%</button><button data-keep="60">60%</button><button data-keep="70">70%</button><button data-keep="90">90%</button><button data-keep="110">110%</button><button data-keep="150">150%</button></div></div><div><label for="size">Grid size <output id="sizeValue">100%</output></label><input id="size" type="range" min="65" max="140" value="100"><div class="muted">Actual coverage <strong id="coverage"></strong></div><div id="count" class="muted" aria-live="polite"></div></div></section><section class="presets panel"><div class="break-title"><span>Position presets</span><label for="tableSize">Players <select id="tableSize" aria-label="Players at the table"><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option selected>9</option></select></label></div><label for="aggression">Position aggression <output id="aggressionValue"></output></label><input id="aggression" type="range" min="-20" max="20" step="0.1" value="0"><div class="ends"><span>Conservative · −20%</span><span>Neutral</span><span>Aggressive · +20%</span></div><div class="preset-buttons" id="positionButtons"></div></section><section class="grid-wrap" aria-label="Starting hand matrix"><div class="matrix-layout" id="matrixLayout"><div id="grid" class="grid"></div><div class="matrix-shortcuts" role="group" aria-label="Keep a percentage of the current range"><button type="button" data-keep="50">50%</button><button type="button" data-keep="60">60%</button><button type="button" data-keep="70">70%</button></div></div></section>
@@ -63,11 +75,25 @@ button,input,select,summary{touch-action:manipulation}
 <dialog id="handDialog" class="hand-dialog" aria-labelledby="handHistoryTitle">
 <div class="log-top"><h2 id="handHistoryTitle">Hand history</h2><button type="button" id="closeHands">Close</button></div>
 <p class="muted">Select a recorded hand to edit it. Records save in this browser on this device.</p>
-<button type="button" id="exportHands">Export records</button>
+
+<div class="session-controls">
+<label>Playing session<select id="sessionSelect"><option value="current">Current session</option></select></label>
+<label>Save current session as<input id="sessionName" placeholder="e.g. Sunday tournament" maxlength="100"></label>
+<button type="button" id="saveSession">Save session &amp; start a new list</button>
+<span id="sessionStatus" class="muted" role="status"></span>
+</div>
+<button type="button" id="exportHands">Export selected session</button>
 <div id="handList"></div>
 <form id="handForm" hidden>
 <h3 id="handTitle"></h3>
 <label>Opponents’ hands<textarea id="opponentHands" rows="2" placeholder="e.g. Player 1: KK; Player 2: AJs (or unknown)"></textarea></label>
+
+<button type="button" id="pickOpponent">Choose opponent’s hand from matrix</button>
+<section id="opponentPicker" hidden aria-label="Opponent hand picker">
+<p class="muted">Tap a hand to add it. Repeat for additional opponents.</p>
+<div id="opponentGrid" role="group" aria-label="Opponent starting hands"></div>
+<button type="button" id="closeOpponentPicker">Done</button>
+</section>
 <div class="log-fields">
 <label>Stage of all-in / showdown<select id="handStage"><option value="">Not recorded</option><option>Pre-flop</option><option>Flop (before turn)</option><option>Turn (before river)</option><option>River (after river dealt)</option></select></label>
 <label>How the hand ended<select id="handEnding"><option value="">Not recorded</option><option>Showdown</option><option>Everyone else folded</option><option>I folded</option></select></label>
@@ -75,6 +101,7 @@ button,input,select,summary{touch-action:manipulation}
 </div>
 <label>Notes<textarea id="handNotes" rows="3" placeholder="Board cards, betting, or anything to review later"></textarea></label>
 <button type="submit">Save details</button>
+<button type="button" id="deleteHand">Delete this hand</button>
 <p id="handSaveStatus" class="muted" role="status"></p>
 </form>
 </dialog>
@@ -179,7 +206,7 @@ $('stackNextGroup').onclick=()=>changeStack(groupJump(+$('stack').value,1));
 $('range').oninput=()=>{activePreset=null;render();};
 $('saveApp').onclick=()=>{
 const clone=document.documentElement.cloneNode(true);
-clone.querySelector('#embeddedState').textContent=JSON.stringify({rankEdits,stackSlots,handRecords,gridSize:+$('size').value,stackBB:+$('stack').value,rangePercent:+$('range').value,aggression:+$('aggression').value,tableSize:+$('tableSize').value}).replace(/</g,'\u003c');
+clone.querySelector('#embeddedState').textContent=JSON.stringify({rankEdits,stackSlots,handRecords:currentHandRecords,handSessions:savedSessions,gridSize:+$('size').value,stackBB:+$('stack').value,rangePercent:+$('range').value,aggression:+$('aggression').value,tableSize:+$('tableSize').value}).replace(/</g,'\u003c');
 const url=URL.createObjectURL(new Blob(['<!doctype html>\n'+clone.outerHTML],{type:'text/html'}));
 const link=document.createElement('a');link.href=url;link.download='Poker-Range-Grid-Custom.html';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
 $('editStatus').textContent='Customised copy downloaded. Open that saved copy to retain these rankings and settings.';
@@ -205,6 +232,8 @@ function resizeGrid(){const scale=+$('size').value/100;$('matrixLayout').classLi
 
 const handLogKey='poker-range-hand-log-v1';
 let handRecords=[],editingHandId=null;
+let currentHandRecords=[],savedSessions=[],selectedSessionId='current';
+const sessionsKey='poker-range-hand-sessions-v1';
 function validHandRecords(value){return Array.isArray(value)&&value.every(r=>r&&typeof r.id==='string'&&hands.some(h=>h.name===r.hand)&&typeof r.createdAt==='string');}
 let handLoadWarning='';
 try{
@@ -213,21 +242,30 @@ try{
  if(!validHandRecords(source))throw Error('Invalid records');
  handRecords=source;
 }catch(e){handLoadWarning='Could not load saved records. Export any records before closing.';}
+
+currentHandRecords=handRecords;
+if(Array.isArray(embeddedState.handSessions))savedSessions=embeddedState.handSessions.filter(s=>s&&typeof s.id==='string'&&typeof s.name==='string'&&validHandRecords(s.records));
+try{
+ const data=JSON.parse(localStorage.getItem(sessionsKey)||'null');
+ if(data&&validHandRecords(data.current)&&Array.isArray(data.sessions)&&data.sessions.every(s=>typeof s.id==='string'&&typeof s.name==='string'&&validHandRecords(s.records))){
+  currentHandRecords=data.current;savedSessions=data.sessions;handRecords=currentHandRecords;
+ }
+}catch(e){handLoadWarning='Could not load saved sessions. Keep this page open and export your records.';}
 function persistHandRecords(){
- try{localStorage.setItem(handLogKey,JSON.stringify(handRecords));return true;}
+ try{localStorage.setItem(sessionsKey,JSON.stringify({current:currentHandRecords,sessions:savedSessions}));localStorage.setItem(handLogKey,JSON.stringify(currentHandRecords));return true;}
  catch(e){return false;}
 }
 function updateHandTools(){
  $('recordHand').disabled=!selectedHand;
  $('recordHand').textContent=selectedHand?'Record hand · '+selectedHand:'Record hand · select a hand';
- $('openHands').textContent='Hand history ('+handRecords.length+')';
+ $('openHands').textContent='Hand history ('+currentHandRecords.length+')';
 }
 function renderHandList(){
  const list=$('handList');list.replaceChildren();
  if(!handRecords.length){const p=document.createElement('p');p.className='muted';p.textContent='No hands recorded yet. Select a matrix hand and press Record hand.';list.append(p);}
  [...handRecords].reverse().forEach(r=>{
   const b=document.createElement('button');b.type='button';
-  b.textContent=r.hand+' · '+r.stackBB+' BB · '+(r.outcome||'Pending')+' · '+new Date(r.createdAt).toLocaleString();
+  b.textContent=r.hand+' · '+r.stackBB+' BB · '+(r.outcome||'Pending');
   b.setAttribute('aria-pressed',String(r.id===editingHandId));b.onclick=()=>editHandRecord(r.id);list.append(b);
  });updateHandTools();
 }
@@ -236,15 +274,16 @@ function editHandRecord(id){
  editingHandId=id;$('handForm').hidden=false;
  $('handTitle').textContent=r.hand+' · '+r.stackBB+' BB';
  for(const [field,key] of [['opponentHands','opponents'],['handStage','stage'],['handEnding','ending'],['handOutcome','outcome'],['handNotes','notes']])$(field).value=r[key]||'';
- $('handSaveStatus').textContent='';renderHandList();
+ $('handSaveStatus').textContent='';$('opponentPicker').hidden=true;renderHandList();
 }
 $('recordHand').onclick=()=>{
  if(!selectedHand)return;
+ selectHandSession('current');
  handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,opponents:'',stage:'',ending:'',outcome:'',notes:''});
  const saved=persistHandRecords();updateHandTools();
  $('handStatus').textContent=selectedHand+' recorded. '+(saved?'':'Browser saving unavailable—export records before closing.');
 };
-$('openHands').onclick=()=>{renderHandList();$('handDialog').showModal();};
+$('openHands').onclick=()=>{renderSessionChoices();renderHandList();$('handDialog').showModal();};
 $('closeHands').onclick=()=>$('handDialog').close();
 $('handForm').onsubmit=event=>{
  event.preventDefault();const r=handRecords.find(r=>r.id===editingHandId);if(!r)return;
@@ -256,7 +295,48 @@ $('exportHands').onclick=()=>{
  const url=URL.createObjectURL(new Blob([JSON.stringify(handRecords,null,2)],{type:'application/json'}));
  const link=document.createElement('a');link.href=url;link.download='poker-hand-records-'+new Date().toISOString().slice(0,10)+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
 };
-$('handStatus').textContent=handLoadWarning;updateHandTools();
+
+function renderSessionChoices(){
+ const select=$('sessionSelect');select.replaceChildren();
+ const currentOption=document.createElement('option');currentOption.value='current';currentOption.textContent='Current session ('+currentHandRecords.length+' hands)';select.append(currentOption);
+ for(const session of savedSessions){const option=document.createElement('option');option.value=session.id;option.textContent=session.name+' ('+session.records.length+' hands)';select.append(option);}
+ select.value=selectedSessionId;
+ $('saveSession').disabled=!currentHandRecords.length;
+}
+function selectHandSession(id){
+ const session=savedSessions.find(s=>s.id===id);
+ selectedSessionId=session?id:'current';handRecords=session?session.records:currentHandRecords;
+ editingHandId=null;$('handForm').hidden=true;$('opponentPicker').hidden=true;
+ renderSessionChoices();renderHandList();
+}
+$('sessionSelect').onchange=()=>selectHandSession($('sessionSelect').value);
+$('saveSession').onclick=()=>{
+ if(!currentHandRecords.length)return;
+ const name=$('sessionName').value.trim();
+ if(!name){$('sessionStatus').textContent='Enter a name for this session.';$('sessionName').focus();return;}
+ const session={id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),name,records:currentHandRecords};
+ savedSessions.push(session);currentHandRecords=[];selectHandSession(session.id);
+ const saved=persistHandRecords();$('sessionName').value='';
+ $('sessionStatus').textContent=saved?'Session saved. New hands go into Current session.':'Browser saving unavailable—export this session before closing.';
+};
+$('deleteHand').onclick=()=>{
+ const index=handRecords.findIndex(r=>r.id===editingHandId);if(index<0)return;
+ handRecords.splice(index,1);editingHandId=null;$('handForm').hidden=true;
+ const saved=persistHandRecords();renderSessionChoices();renderHandList();
+ $('sessionStatus').textContent=saved?'Hand deleted.':'Hand removed; browser saving unavailable.';
+};
+for(const hand of hands){
+ const button=document.createElement('button');button.type='button';button.dataset.type=hand.type;button.textContent=hand.name;button.setAttribute('aria-label','Opponent '+hand.name);button.setAttribute('aria-pressed','false');
+ button.onclick=()=>{
+  const input=$('opponentHands');input.value+=(input.value.trim()?'; ':'')+hand.name;
+  $('opponentGrid').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
+  const r=handRecords.find(r=>r.id===editingHandId);if(r){r.opponents=input.value;const saved=persistHandRecords();$('handSaveStatus').textContent=saved?'Opponent hand saved.':'Browser saving unavailable—export before closing.';}
+ };
+ $('opponentGrid').append(button);
+}
+$('pickOpponent').onclick=()=>{$('opponentPicker').hidden=!$('opponentPicker').hidden;};
+$('closeOpponentPicker').onclick=()=>{$('opponentPicker').hidden=true;};
+$('handStatus').textContent=handLoadWarning;renderSessionChoices();updateHandTools();
 
 $('size').oninput=resizeGrid;resizeGrid();render();
 if(document.modelContext?.registerTool){Promise.resolve(document.modelContext.registerTool({name:'configure_poker_range',description:'Set effective stack depth and top starting-hand percentage in the visible grid.',inputSchema:{type:'object',properties:{stackBB:{type:'number',minimum:5,maximum:300},rangePercent:{type:'number',minimum:0,maximum:100}},required:['stackBB','rangePercent'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input){if(!input||!Number.isFinite(input.stackBB)||input.stackBB<5||input.stackBB>300||!Number.isFinite(input.rangePercent)||input.rangePercent<0||input.rangePercent>100)throw new Error('Stack must be 5–300 BB and range must be 0–100%.');$('stack').value=String(input.stackBB);$('range').value=String(input.rangePercent);return render();}})).catch(()=>{});}
