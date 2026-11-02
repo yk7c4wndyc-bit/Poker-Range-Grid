@@ -47,7 +47,13 @@ button,input,select,summary{touch-action:manipulation}
 .hand-dialog .log-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
 #handList{display:grid;gap:8px;max-height:32vh;overflow:auto;margin:12px 0}
 #handList button{text-align:left;width:100%}
-#handList button[aria-pressed=true]{border-color:#7cf1c3;background:#284b42}
+#handList .hand-row{position:relative;overflow:hidden;border-radius:8px;background:#9b2834;flex-shrink:0}
+#handList .hand-entry{position:relative;z-index:1;display:block;touch-action:pan-y;background:#223446;transition:transform .18s ease;white-space:normal}
+#handList .hand-entry.win{background:#183d2c;border-color:#429a65}
+#handList .hand-entry.loss{background:#49232b;border-color:#bb5663}
+#handList .hand-entry[aria-pressed=true]{outline:2px solid #7cf1c3;outline-offset:-3px}
+#handList .hand-delete{position:absolute;inset:0 0 0 auto;width:88px;background:#9b2834;border:0;text-align:center}
+#handList .hand-opponents{display:block;font-size:14px;margin-top:5px;color:#dce7ef}
 #handForm{border-top:1px solid #3b5267;padding-top:16px;display:grid;gap:12px}
 #handForm[hidden]{display:none}
 #handForm label{display:grid;gap:6px;font-size:14px}
@@ -74,7 +80,7 @@ button,input,select,summary{touch-action:manipulation}
 </section>
 <dialog id="handDialog" class="hand-dialog" aria-labelledby="handHistoryTitle">
 <div class="log-top"><h2 id="handHistoryTitle">Hand history</h2><button type="button" id="closeHands">Close</button></div>
-<p class="muted">Select a recorded hand to edit it. Records save in this browser on this device.</p>
+<p class="muted">Select a recorded hand to edit it. Swipe left to reveal Delete. Green = win; red = loss. Records save in this browser on this device.</p>
 
 <div class="session-controls">
 <label>Playing session<select id="sessionSelect"><option value="current">Current session</option></select></label>
@@ -266,9 +272,24 @@ function renderHandList(){
  const list=$('handList');list.replaceChildren();
  if(!handRecords.length){const p=document.createElement('p');p.className='muted';p.textContent='No hands recorded yet. Select a matrix hand and press Record hand.';list.append(p);}
  [...handRecords].reverse().forEach(r=>{
-  const b=document.createElement('button');b.type='button';
-  b.textContent=r.hand+' · '+recordedRankLabel(r)+' · '+r.stackBB+' BB · '+(r.outcome||'Pending');
-  b.setAttribute('aria-pressed',String(r.id===editingHandId));b.onclick=()=>editHandRecord(r.id);list.append(b);
+  const row=document.createElement('div');row.className='hand-row';
+  const remove=document.createElement('button');remove.type='button';remove.className='hand-delete';remove.textContent='Delete';remove.setAttribute('aria-label','Delete recorded '+r.hand+' hand');remove.tabIndex=-1;remove.disabled=true;
+  remove.onclick=()=>deleteHandRecord(r.id);
+  const b=document.createElement('button');b.type='button';b.className='hand-entry'+(r.outcome==='Win'?' win':r.outcome==='Loss'?' loss':'');
+  const title=document.createElement('span');title.textContent=r.hand+' · '+recordedRankLabel(r)+' · '+r.stackBB+' BB · '+(r.outcome||'Pending');
+  const opponents=document.createElement('span');opponents.className='hand-opponents';opponents.textContent='Opponent'+(String(r.opponents||'').includes(';')?'s':'')+': '+(r.opponents||'Not recorded');b.append(title,opponents);
+  let startX=0,startY=0,offset=0,dragging=false,horizontal=false,suppressClick=false;
+  const reveal=open=>{offset=open?-88:0;b.style.transform='translateX('+offset+'px)';remove.tabIndex=open?0:-1;remove.disabled=!open;};
+  b.onpointerdown=event=>{if(event.pointerType==='mouse'&&event.button!==0)return;startX=event.clientX;startY=event.clientY;dragging=true;horizontal=false;suppressClick=false;};
+  b.onpointermove=event=>{
+   if(!dragging)return;const dx=event.clientX-startX,dy=event.clientY-startY;
+   if(!horizontal){if(Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>8){dragging=false;return;}if(Math.abs(dx)<10)return;horizontal=true;suppressClick=true;b.setPointerCapture?.(event.pointerId);}
+   b.style.transition='none';b.style.transform='translateX('+Math.max(-88,Math.min(0,offset+dx))+'px)';
+  };
+  b.onpointerup=event=>{if(!dragging)return;dragging=false;b.style.transition='';if(horizontal)reveal(offset+event.clientX-startX<-35);};
+  b.onpointercancel=()=>{dragging=false;b.style.transition='';reveal(offset===-88);};
+  b.onkeydown=event=>{if(event.key==='ArrowLeft'){event.preventDefault();reveal(true);remove.focus();}if(event.key==='Escape'){reveal(false);}};
+  b.setAttribute('aria-pressed',String(r.id===editingHandId));b.onclick=()=>{if(suppressClick){suppressClick=false;return;}if(offset){reveal(false);return;}editHandRecord(r.id);};row.append(remove,b);list.append(row);
  });updateHandTools();
 }
 function editHandRecord(id){
@@ -322,18 +343,19 @@ $('saveSession').onclick=()=>{
  const saved=persistHandRecords();$('sessionName').value='';
  $('sessionStatus').textContent=saved?'Session saved. New hands go into Current session.':'Browser saving unavailable—export this session before closing.';
 };
-$('deleteHand').onclick=()=>{
- const index=handRecords.findIndex(r=>r.id===editingHandId);if(index<0)return;
- handRecords.splice(index,1);editingHandId=null;$('handForm').hidden=true;
+function deleteHandRecord(id){
+ const index=handRecords.findIndex(r=>r.id===id);if(index<0)return;
+ handRecords.splice(index,1);if(editingHandId===id){editingHandId=null;$('handForm').hidden=true;}
  const saved=persistHandRecords();renderSessionChoices();renderHandList();
  $('sessionStatus').textContent=saved?'Hand deleted.':'Hand removed; browser saving unavailable.';
-};
+}
+$('deleteHand').onclick=()=>deleteHandRecord(editingHandId);
 for(const hand of hands){
  const button=document.createElement('button');button.type='button';button.dataset.type=hand.type;button.textContent=hand.name;button.setAttribute('aria-label','Opponent '+hand.name);button.setAttribute('aria-pressed','false');
  button.onclick=()=>{
   const input=$('opponentHands');input.value+=(input.value.trim()?'; ':'')+hand.name;
   $('opponentGrid').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
-  const r=handRecords.find(r=>r.id===editingHandId);if(r){r.opponents=input.value;const saved=persistHandRecords();$('handSaveStatus').textContent=saved?'Opponent hand saved.':'Browser saving unavailable—export before closing.';}
+  const r=handRecords.find(r=>r.id===editingHandId);if(r){r.opponents=input.value;const saved=persistHandRecords();renderHandList();$('handSaveStatus').textContent=saved?'Opponent hand saved.':'Browser saving unavailable—export before closing.';}
  };
  $('opponentGrid').append(button);
 }
@@ -350,7 +372,7 @@ $('closeOpponentPicker').onclick=()=>setOpponentPicker(false);
 $('removeLastOpponent').onclick=()=>{
  const values=$('opponentHands').value.split(';').map(s=>s.trim()).filter(Boolean);values.pop();
  $('opponentHands').value=values.join('; ');
- const r=handRecords.find(r=>r.id===editingHandId);if(r){r.opponents=$('opponentHands').value;const saved=persistHandRecords();$('handSaveStatus').textContent=saved?'Opponent hands saved.':'Browser saving unavailable—export before closing.';}
+ const r=handRecords.find(r=>r.id===editingHandId);if(r){r.opponents=$('opponentHands').value;const saved=persistHandRecords();renderHandList();$('handSaveStatus').textContent=saved?'Opponent hands saved.':'Browser saving unavailable—export before closing.';}
 };
 $('handEnding').onchange=()=>{
  if($('handEnding').value!=='I folded')return;
