@@ -86,13 +86,14 @@ button,input,select,summary{touch-action:manipulation}
 <div id="handList"></div>
 <form id="handForm" hidden>
 <h3 id="handTitle"></h3>
-<label>Opponents’ hands<textarea id="opponentHands" rows="2" placeholder="e.g. Player 1: KK; Player 2: AJs (or unknown)"></textarea></label>
+<label>Opponents’ hands<textarea id="opponentHands" rows="2" readonly inputmode="none" role="button" aria-haspopup="true" aria-controls="opponentPicker" aria-expanded="false" placeholder="Tap here to select opponents’ hands from the matrix"></textarea></label>
 
 <button type="button" id="pickOpponent">Choose opponent’s hand from matrix</button>
 <section id="opponentPicker" hidden aria-label="Opponent hand picker">
 <p class="muted">Tap a hand to add it. Repeat for additional opponents.</p>
 <div id="opponentGrid" role="group" aria-label="Opponent starting hands"></div>
 <button type="button" id="closeOpponentPicker">Done</button>
+<button type="button" id="removeLastOpponent">Remove last opponent</button>
 </section>
 <div class="log-fields">
 <label>Stage of all-in / showdown<select id="handStage"><option value="">Not recorded</option><option>Pre-flop</option><option>Flop (before turn)</option><option>Turn (before river)</option><option>River (after river dealt)</option></select></label>
@@ -260,26 +261,27 @@ function updateHandTools(){
  $('recordHand').textContent=selectedHand?'Record hand · '+selectedHand:'Record hand · select a hand';
  $('openHands').textContent='Hand history ('+currentHandRecords.length+')';
 }
+function recordedRankLabel(record){return Number.isFinite(record.rankPercent)?record.rankPercent.toFixed(2)+'%':'Rank not recorded';}
 function renderHandList(){
  const list=$('handList');list.replaceChildren();
  if(!handRecords.length){const p=document.createElement('p');p.className='muted';p.textContent='No hands recorded yet. Select a matrix hand and press Record hand.';list.append(p);}
  [...handRecords].reverse().forEach(r=>{
   const b=document.createElement('button');b.type='button';
-  b.textContent=r.hand+' · '+r.stackBB+' BB · '+(r.outcome||'Pending');
+  b.textContent=r.hand+' · '+recordedRankLabel(r)+' · '+r.stackBB+' BB · '+(r.outcome||'Pending');
   b.setAttribute('aria-pressed',String(r.id===editingHandId));b.onclick=()=>editHandRecord(r.id);list.append(b);
  });updateHandTools();
 }
 function editHandRecord(id){
  const r=handRecords.find(r=>r.id===id);if(!r)return;
  editingHandId=id;$('handForm').hidden=false;
- $('handTitle').textContent=r.hand+' · '+r.stackBB+' BB';
+ $('handTitle').textContent=r.hand+' · '+recordedRankLabel(r)+' · '+(r.stackGroup||bandLabel(r.stackBB));
  for(const [field,key] of [['opponentHands','opponents'],['handStage','stage'],['handEnding','ending'],['handOutcome','outcome'],['handNotes','notes']])$(field).value=r[key]||'';
- $('handSaveStatus').textContent='';$('opponentPicker').hidden=true;renderHandList();
+ $('handSaveStatus').textContent='';setOpponentPicker(false);renderHandList();
 }
 $('recordHand').onclick=()=>{
  if(!selectedHand)return;
  selectHandSession('current');
- handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,opponents:'',stage:'',ending:'',outcome:'',notes:''});
+ handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,stackGroup:bandLabel(+$('stack').value),rankPercent:current.find(h=>h.name===selectedHand)?.cumulativePercent,opponents:'',stage:'',ending:'',outcome:'',notes:''});
  const saved=persistHandRecords();updateHandTools();
  $('handStatus').textContent=selectedHand+' recorded. '+(saved?'':'Browser saving unavailable—export records before closing.');
 };
@@ -288,6 +290,7 @@ $('closeHands').onclick=()=>$('handDialog').close();
 $('handForm').onsubmit=event=>{
  event.preventDefault();const r=handRecords.find(r=>r.id===editingHandId);if(!r)return;
  for(const [field,key] of [['opponentHands','opponents'],['handStage','stage'],['handEnding','ending'],['handOutcome','outcome'],['handNotes','notes']])r[key]=$(field).value;
+ if(r.ending==='I folded'){r.outcome='Loss';$('handOutcome').value='Loss';}
  r.updatedAt=new Date().toISOString();const saved=persistHandRecords();renderHandList();
  $('handSaveStatus').textContent=saved?'Details saved.':'Browser saving unavailable—export records before closing.';
 };
@@ -334,8 +337,27 @@ for(const hand of hands){
  };
  $('opponentGrid').append(button);
 }
-$('pickOpponent').onclick=()=>{$('opponentPicker').hidden=!$('opponentPicker').hidden;};
-$('closeOpponentPicker').onclick=()=>{$('opponentPicker').hidden=true;};
+
+function setOpponentPicker(open){
+ $('opponentPicker').hidden=!open;
+ $('opponentHands').setAttribute('aria-expanded',String(open));
+ if(open)$('opponentPicker').scrollIntoView?.({block:'nearest'});
+}
+$('pickOpponent').onclick=()=>setOpponentPicker($('opponentPicker').hidden);
+$('opponentHands').onclick=()=>setOpponentPicker(true);
+$('opponentHands').onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();setOpponentPicker(true);}};
+$('closeOpponentPicker').onclick=()=>setOpponentPicker(false);
+$('removeLastOpponent').onclick=()=>{
+ const values=$('opponentHands').value.split(';').map(s=>s.trim()).filter(Boolean);values.pop();
+ $('opponentHands').value=values.join('; ');
+ const r=handRecords.find(r=>r.id===editingHandId);if(r){r.opponents=$('opponentHands').value;const saved=persistHandRecords();$('handSaveStatus').textContent=saved?'Opponent hands saved.':'Browser saving unavailable—export before closing.';}
+};
+$('handEnding').onchange=()=>{
+ if($('handEnding').value!=='I folded')return;
+ $('handOutcome').value='Loss';
+ const r=handRecords.find(r=>r.id===editingHandId);
+ if(r){r.ending='I folded';r.outcome='Loss';const saved=persistHandRecords();renderHandList();$('handSaveStatus').textContent=saved?'Fold and loss saved.':'Browser saving unavailable—export before closing.';}
+};
 $('handStatus').textContent=handLoadWarning;renderSessionChoices();updateHandTools();
 
 $('size').oninput=resizeGrid;resizeGrid();render();
