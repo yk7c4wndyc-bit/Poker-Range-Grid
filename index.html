@@ -306,7 +306,7 @@ $('recordHand').onclick=()=>{
  const previous=currentHandRecords[currentHandRecords.length-1];
  if(previous?.hand===selectedHand&&!window.confirm('⚠️ You just recorded '+selectedHand+'. Record the same hand again?'))return;
  selectHandSession('current');
- handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,stackGroup:bandLabel(+$('stack').value),rankPercent:current.find(h=>h.name===selectedHand)?.cumulativePercent,opponents:'',stage:'',ending:'',outcome:'',notes:''});
+ handRecords.push({id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),hand:selectedHand,createdAt:new Date().toISOString(),stackBB:+$('stack').value,stackGroup:bandLabel(+$('stack').value),rankPercent:current.find(h=>h.name===selectedHand)?.cumulativePercent,opponents:'',stage:'',ending:'I folded',outcome:'Loss',notes:''});
  const saved=persistHandRecords();updateHandTools();
  $('handStatus').textContent=selectedHand+' recorded. '+(saved?'':'Browser saving unavailable—export records before closing.');
 };
