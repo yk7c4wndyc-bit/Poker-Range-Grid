@@ -50,6 +50,9 @@ button,input,select,summary{touch-action:manipulation}
 #handList .hand-row{position:relative;overflow:hidden;border-radius:8px;background:#9b2834;flex-shrink:0}
 #handList .hand-entry{position:relative;z-index:1;display:block;touch-action:pan-y;background:#223446;transition:transform .18s ease;white-space:normal}
 #handList .hand-entry.win{background:#183d2c;border-color:#429a65}
+#handList .hand-entry.win-showdown{background:#10452c;border-color:#35845a}
+#handList .hand-entry.win-fold{background:#d4f3dc;border-color:#9cd5ac;color:#193e27}
+#handList .hand-entry.win-fold .hand-opponents{color:#305b3e}
 #handList .hand-entry.loss{background:#49232b;border-color:#bb5663}
 #handList .hand-entry.loss-showdown{background:#650f20;border-color:#b93b53}
 #handList .hand-entry.loss-fold{background:#f7d6df;border-color:#e6a7b9;color:#452331}
@@ -84,7 +87,7 @@ button,input,select,summary{touch-action:manipulation}
 </section>
 <dialog id="handDialog" class="hand-dialog" aria-labelledby="handHistoryTitle">
 <div class="log-top"><h2 id="handHistoryTitle">Hand history</h2><button type="button" id="closeHands">Close</button></div>
-<p class="muted">Select a recorded hand to edit it. Swipe left to reveal Delete. Green = win; dark red = showdown loss; light pink = folded loss. Records save in this browser on this device.</p>
+<p class="muted">Select a recorded hand to edit it. Swipe left to reveal Delete. Light green = everyone else folded; dark green = showdown win; dark red = showdown loss; light pink = folded loss. Records save in this browser on this device.</p>
 
 <div class="session-controls">
 <label>Playing session<select id="sessionSelect"><option value="current">Current session</option></select></label>
@@ -280,7 +283,7 @@ function renderHandList(){
   const row=document.createElement('div');row.className='hand-row';
   const remove=document.createElement('button');remove.type='button';remove.className='hand-delete';remove.textContent='Delete';remove.setAttribute('aria-label','Delete recorded '+r.hand+' hand');remove.tabIndex=-1;remove.disabled=true;
   remove.onclick=()=>deleteHandRecord(r.id);
-  const b=document.createElement('button');b.type='button';b.className='hand-entry'+(r.outcome==='Win'?' win':r.outcome==='Loss'?' loss'+(r.ending==='I folded'?' loss-fold':r.ending==='Showdown'?' loss-showdown':''):'');
+  const b=document.createElement('button');b.type='button';b.className='hand-entry'+(r.outcome==='Win'?' win'+(r.ending==='Everyone else folded'?' win-fold':r.ending==='Showdown'?' win-showdown':''):r.outcome==='Loss'?' loss'+(r.ending==='I folded'?' loss-fold':r.ending==='Showdown'?' loss-showdown':''):'');
   const title=document.createElement('span');title.textContent=r.hand+' · '+recordedRankLabel(r)+' · '+r.stackBB+' BB · '+(r.outcome||'Pending');
   const opponents=document.createElement('span');opponents.className='hand-opponents';opponents.textContent='Opponent'+(String(r.opponents||'').includes(';')?'s':'')+': '+(r.opponents||'Not recorded');b.append(title,opponents);
   let startX=0,startY=0,offset=0,dragging=false,horizontal=false,suppressClick=false;
